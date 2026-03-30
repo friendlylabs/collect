@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="lofi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.3">
+
+    <title>Surveyr Collect - Zones</title>
+    <link href="/css/tailwind.css" id="tailwindCss" rel="stylesheet">
+    <link href="/css/app.css" id="appCss" rel="stylesheet">
+    <link href="/fonts/fontawesome/all.css" id="fontawesomeCss" rel="stylesheet">
+
+    <link href="/js/libs/toast/toast.min.css" rel="stylesheet">
+
+    <script src="/js/libs/toast/toast.min.js" id="toastJs"></script>
+    <script src="/vendor/dexie/dexie.min.js" id="dexieJs"></script>
+    <script src="/js/database.js" id="databaseJs"></script>
+    <script src="/js/zone-engine.js" id="zoneEngineJs"></script>
+    <script src="/js/components.js"></script>
+</head>
+<body>
+    <div class="content">
+        <header class="py-4 px-3">
+            <h3 class="text-base font-bold">Zone Data Management</h3>
+            <div class="themeSwitch btn absolute end-3 top-3 btn-sm rounded" onclick="toggleTheme()">
+                <i class="fas fa-moon" id="themeIcon"></i>
+            </div>
+        </header>
+        <main class="py-2 px-3 overflow-y-auto relative">
+            <div class="relative overflow-auto" style="height: 90%;" id="zoneListingContainer">
+                <div id="contentLoadingContainer" class="pt-20 text-center">
+                    <i class="fas fa-gear fa-spin text-3xl text-primary"></i>
+                    <h3 class="text-base font-bold opacity-60 mt-3">Loading zones ...</h3>
+                </div>
+            </div>
+
+            <div class="absolute bottom-0 start-0 py-4 px-2 w-full">
+                <button id="refreshZonesBtn" class="btn bg-blue-400 mx-auto text-gray-800 rounded-full w-full hidden" onclick="refreshZones()">
+                    <i class="fa-regular fa-sync text-xl"></i>
+                    Refresh Zone Data
+                </button>
+            </div>
+        </main>
+        <footer class="py-4 px-3" id="navigationBar"></footer>
+    </div>
+
+    <script src="/vendor/jquery/jquery.min.js" id="jqueryJs"></script>
+    <script src="/vendor/utils/sweetalert.min.js" id="swalJs"></script>
+    <script src="/js/app.js" id="appJs"></script>
+    <script>
+
+        document.addEventListener('DOMContentLoaded', function() {
+            loadZonesList();
+        });
+
+        async function loadZonesList() {
+            try {
+                const zones = await getZones();
+                
+                if (zones.length === 0) {
+                    document.getElementById('zoneListingContainer').innerHTML = alertContainer({
+                        icon: 'fa-database',
+                        title: 'No zones found',
+                        message: 'No zone data available. Download forms to automatically fetch zone data, or refresh zones manually.'
+                    });
+                    document.getElementById('refreshZonesBtn').classList.remove('hidden');
+                    return;
+                }
+
+                let zoneList = '<div class="mt-3">';
+                
+                zones.forEach(function(zone) {
+                    const sheetCount = Object.keys(zone.content || {}).length;
+                    const updatedDate = zone.updated_at ? new Date(zone.updated_at).toLocaleDateString() : 'N/A';
+                    
+                    zoneList += `
+                        <div class="bg-base-200 p-4 mb-2 rounded relative">
+                            <h4 class="text-base font-bold">${zone.name}</h4>
+                            <p class="text-xs opacity-60 mt-1">Code: ${zone.code}</p>
+                            <p class="text-xs opacity-60">Sheets: ${sheetCount} | Updated: ${updatedDate}</p>
+                            <div class="mt-3 flex gap-2">
+                                <button class="btn btn-xs btn-info" onclick="viewZoneDetails('${zone.code}')">
+                                    <i class="fa-regular fa-eye"></i> View
+                                </button>
+                                <button class="btn btn-xs btn-error" onclick="deleteZoneData('${zone.code}')">
+                                    <i class="fa-regular fa-trash"></i> Delete
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                zoneList += '</div>';
+                document.getElementById('zoneListingContainer').innerHTML = zoneList;
+                document.getElementById('refreshZonesBtn').classList.remove('hidden');
+                
+            } catch (error) {
+                console.error('Error loading zones:', error);
+                document.getElementById('zoneListingContainer').innerHTML = alertContainer({
+                    icon: 'fa-exclamation-triangle',
+                    title: 'Error loading zones',
+                    message: 'An error occurred while loading zone data.'
+                });
+            }
+        }
+
+        async function viewZoneDetails(code) {
+            try {
+                const zone = await getZoneByCode(code);
+                if (!zone) {
+                    toast.error({message: 'Zone not found'});
+                    return;
+                }
+
+                const summary = zoneEngine.getDataSummary(zone.content);
+                
+                let detailsHtml = `<div class="text-left"><h3 class="font-bold text-lg mb-2">${zone.name}</h3>`;
+                detailsHtml += `<p class="text-sm mb-4"><strong>Code:</strong> ${zone.code}</p>`;
+                detailsHtml += `<p class="text-sm mb-2"><strong>Total Sheets:</strong> ${summary.total_sheets}</p>`;
+                
+                if (summary.sheets) {
+                    detailsHtml += '<div class="mt-3"><strong>Sheets:</strong><ul class="list-disc ml-5 mt-2">';
+                    for (const sheetName in summary.sheets) {
+                        const sheet = summary.sheets[sheetName];
+                        detailsHtml += `<li class="text-sm">${sheetName}: ${sheet.row_count} rows, ${sheet.column_count} columns</li>`;
+                    }
+                    detailsHtml += '</ul></div>';
+                }
+                detailsHtml += '</div>';
+
+                Swal.fire({
+                    title: 'Zone Details',
+                    html: detailsHtml,
+                    width: '80%',
+                    confirmButtonText: 'Close'
+                });
+
+            } catch (error) {
+                console.error('Error viewing zone:', error);
+                toast.error({message: 'Error loading zone details'});
+            }
+        }
+
+        async function deleteZoneData(code) {
+            Swal.fire({
+                title: 'Delete Zone',
+                text: 'Are you sure you want to delete this zone data?',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Yes, delete it',
+                cancelButtonText: 'Cancel'
+            }).then(async (result) => {
+                if (result.isConfirmed) {
+                    const deleted = await deleteZone(code);
+                    if (deleted) {
+                        toast.success({message: 'Zone deleted successfully'});
+                        loadZonesList();
+                    } else {
+                        toast.error({message: 'Error deleting zone'});
+                    }
+                }
+            });
+        }
+
+        async function refreshZones() {
+            if(!checkConnectivity()){
+                toast.error({message: 'No internet connection. Please check your connection and try again.'});
+                return;
+            }
+
+            buttonState('#refreshZonesBtn', 'loading');
+
+            try {
+                const forms = await getForms();
+                const allZoneCodes = new Set();
+                
+                // Extract all unique zone codes from all forms
+                forms.forEach(form => {
+                    const codes = zoneEngine.extractZoneCodes(form.content);
+                    codes.forEach(code => allZoneCodes.add(code));
+                });
+
+                if (allZoneCodes.size === 0) {
+                    toast.info({message: 'No zones found in downloaded forms'});
+                    buttonState('#refreshZonesBtn', 'default');
+                    return;
+                }
+
+                const token = localStorage.getItem('token');
+                const projectUrl = localStorage.getItem('projectUrl');
+                const zonesToSave = [];
+                let successCount = 0;
+                let errorCount = 0;
+
+                // Fetch each complete zone by code
+                for (const code of allZoneCodes) {
+                    try {
+                        // Build base zone URL
+                        const baseUrl = projectUrl + 'zones/show/' + code;
+                        
+                        // First get the summary
+                        const summaryResponse = await $.ajax({
+                            url: baseUrl + '?format=summary',
+                            method: 'GET',
+                            headers: { 'Authorization': 'Bearer ' + token }
+                        });
+
+                        // Then fetch the complete zone data (no filters)
+                        const dataResponse = await $.ajax({
+                            url: baseUrl + '?format=default',
+                            method: 'GET',
+                            headers: { 'Authorization': 'Bearer ' + token }
+                        });
+
+                        if (dataResponse) {
+                            zonesToSave.push({
+                                code: code,
+                                name: summaryResponse.name || 'Zone ' + code,
+                                content: dataResponse
+                            });
+                            successCount++;
+                        }
+                    } catch (error) {
+                        console.error('Error downloading zone:', code, error);
+                        errorCount++;
+                    }
+                }
+
+                // Save all zones to database
+                if (zonesToSave.length > 0) {
+                    await addZones(zonesToSave);
+                    toast.success({message: `Successfully updated ${successCount} zone(s)`});
+                    loadZonesList();
+                } else {
+                    toast.error({message: 'No zones could be downloaded'});
+                }
+
+                if (errorCount > 0) {
+                    toast.warning({message: `${errorCount} zone(s) failed to download`});
+                }
+
+            } catch (error) {
+                console.error('Error refreshing zones:', error);
+                toast.error({message: 'Error refreshing zones'});
+            } finally {
+                buttonState('#refreshZonesBtn', 'default');
+            }
+        }
+
+    </script>
+</body>
+</html>

@@ -22,7 +22,7 @@
                 </div>
             </header>
             
-            <main class="py-6 px-3 overflow-y-auto">
+            <main class="py-6 px-3 overflow-y-auto relative">
                 <div class="">
                     <!-- User Profile Section -->
                     <div class="flex items-center space-x-4 mb-6">
@@ -38,6 +38,39 @@
                     </div>
 
                     <hr>
+
+                    <h1 class="text-sm font-semibold mt-6 mb-4 ms-4 text-gray-500">Resources</h1>
+                    
+                    <ul class="bg-base-100 w-full rounded-box mt-4 space-y-2">
+
+                        <!-- Data Zones -->
+                        <li class="border-b border-base-300 last:border-0">
+                            <a href="/pages/zones/index.html" class="flex items-center py-4 px-4 hover:bg-base-200 transition-colors rounded-lg">
+                                <i class="fa-regular fa-database mr-3"></i>
+                                <span class="font-medium">Data Zones</span>
+                                <i class="fa-solid fa-chevron-right ml-auto text-sm opacity-50"></i>
+                            </a>
+                        </li>
+
+                        <!-- map -->
+                        <li class="border-b border-base-300 last:border-0">
+                            <a href="/pages/map/index.html" class="flex items-center py-4 px-4 hover:bg-base-200 transition-colors rounded-lg" onclick="underDevelopment(event)">
+                                <i class="fa-regular fa-map mr-3"></i>
+                                <span class="font-medium">Maps</span>
+                                <i class="fa-solid fa-chevron-right ml-auto text-sm opacity-50"></i>
+                            </a>
+                        </li>
+
+                        <!-- media -->
+                        <li class="border-b border-base-300 last:border-0">
+                            <a href="/pages/media/index.html" class="flex items-center py-4 px-4 hover:bg-base-200 transition-colors rounded-lg" onclick="underDevelopment(event)">
+                                <i class="fa-regular fa-image mr-3"></i>
+                                <span class="font-medium">Media</span>
+                                <i class="fa-solid fa-chevron-right ml-auto text-sm opacity-50"></i>
+                            </a>
+                        </li>
+
+                    </ul>
             
                     <!-- Notification Toggle ->
                     <div class="form-control w-full border-gray-200 dark:border-gray-700 pt-4">
@@ -65,9 +98,11 @@
                     </ul -->
             
                     <!-- Logout Button -->
-                    <button class="btn btn-danger bg-red-600 w-full mt-6 rounded-lg" onclick="logout()">
-                        <i class="fas fa-sign-out-alt mr-2"></i> Logout
-                    </button>
+                    <div class="bottom-[1rem] left-0 absolute w-full px-3">
+                        <button class="btn btn-danger bg-red-500 w-full mt-6 rounded-lg" onclick="logout()">
+                            <span class="text-gray-100">Logout</span>
+                        </button>
+                    </div>
                 </div>
             </main>            
             
