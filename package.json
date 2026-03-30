@@ -1,7 +1,7 @@
 {
   "name": "co.surveyr.collect",
   "displayName": "surveyr",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "collect the data you need, anytime, anywhere",
   "main": "index.js",
   "scripts": {
@@ -15,7 +15,7 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "autoprefixer": "^10.4.20",
-    "cordova-android": "^13.0.0",
+    "cordova-android": "^15.0.0",
     "cordova-browser": "^7.0.0",
     "cordova-plugin-inappbrowser": "^6.0.0",
     "cordova-plugin-qr-barcode-scanner": "^8.0.3",
