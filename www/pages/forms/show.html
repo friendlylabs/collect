@@ -13,8 +13,9 @@
     <script src="/js/libs/toast/toast.min.js" id="toastJs"></script>
     <script src="/vendor/dexie/dexie.min.js" id="dexieJs"></script>
     <script src="/js/database.js" id="databaseJs"></script>
+    <script src="/js/zone-engine.js" id="zoneEngineJs"></script>
 
-    <link rel="stylesheet" href="/vendor/surveyjs/default.min.css">
+    <link rel="stylesheet" href="/vendor/surveyjs/survey-core.min.css">
     <script src="/vendor/surveyjs/survey.core.min.js"></script>
     <script src="/vendor/surveyjs/survey-js-ui.min.js"></script>
 
@@ -22,15 +23,6 @@
 
     <style>
         body{margin: 0; padding: 0; font-family: Arial, sans-serif;}
-        .recordBtn { height: 35px; width: 35px; background: #F8BBD0; border: none; border-radius: 4px; cursor: pointer; }
-        .saveRecord { height: 35px; width: 35px; background: #C8E6C9; border: none; border-radius: 4px; cursor: pointer; }
-
-        .saveRecord i { color: green; }
-        .recordBtn i { color: crimson; }
-
-        .recordBtn:hover { background: #F48FB1; }
-        .saveRecord:hover { background: #A5D6A7; }
-        .sd-description { display: none;}
     </style>
 </head>
 <body>
@@ -55,6 +47,9 @@
                 var formTheme = 'Flat';
                 var survey = new Survey.Model(formContent);
 
+                // Setup local zone engine for offline choicesByUrl
+                await setupLocalZoneEngine(survey);
+
                 survey.render(surveyContainer);
                 
                 if(appTheme === 'dim') {
@@ -68,6 +63,142 @@
                 console.error(e);
             }
         });
+
+        async function setupLocalZoneEngine(survey) {
+            // Find all questions with choicesByUrl and preload their choices
+            const questions = survey.getAllQuestions();
+            
+            for (const question of questions) {
+                if (question.choicesByUrl && question.choicesByUrl.url) {
+                    const choicesByUrl = question.choicesByUrl;
+                    const url = choicesByUrl.url;
+                    
+                    // Extract optional properties with fallbacks
+                    const valueName = choicesByUrl.valueName || null;
+                    const titleName = choicesByUrl.titleName || null;
+                    const path = choicesByUrl.path || null;
+                    
+                    // Check if URL has dynamic variables
+                    if (url.includes('{')) {
+                        // This question depends on other values, set it up for dynamic loading
+                        question.choicesOriginalUrl = url;
+                        question.choicesValueName = valueName;
+                        question.choicesTitleName = titleName;
+                        question.choicesPath = path;
+                        
+                        // Clear choicesByUrl to prevent server requests
+                        delete question.choicesByUrl;
+                        question.choices = [];
+                    } else {
+                        // Static URL, load choices immediately
+                        try {
+                            const data = await zoneEngine.fetchZoneData(url);
+
+                            const choices = transformDataToChoices(data, valueName, titleName, path);
+
+                            // Replace choicesByUrl with static choices
+                            delete question.choicesByUrl;
+                            question.choices = choices;
+                        } catch (error) {
+                            console.error('Error loading choices for question:', question.name, error);
+                            delete question.choicesByUrl;
+                            question.choices = [];
+                        }
+                    }
+                }
+            }
+
+            // Watch for value changes to reload dependent dropdowns
+            survey.onValueChanged.add(async function(sender, options) {
+                const changedQuestion = options.name;
+                const changedValue = options.value;
+                
+                // Find questions that depend on the changed value
+                for (const question of survey.getAllQuestions()) {
+                    if (question.choicesOriginalUrl && question.choicesOriginalUrl.includes(`{${changedQuestion}}`)) {
+                        // Resolve dynamic URL with current survey data
+                        const url = zoneEngine.resolveDynamicUrl(question.choicesOriginalUrl, survey.data);
+                        
+                        // Check if URL is fully resolved
+                        if (!url.includes('{')) {
+                            try {
+                                // Fetch data from local zone engine
+                                const data = await zoneEngine.fetchZoneData(url);
+
+                                const choices = transformDataToChoices(
+                                    data, 
+                                    question.choicesValueName, 
+                                    question.choicesTitleName,
+                                    question.choicesPath
+                                );
+
+                                // Update choices
+                                question.choices = choices;
+                            } catch (error) {
+                                console.error('Error reloading choices for question:', question.name, error);
+                                question.choices = [];
+                            }
+                        } else {
+                            // URL still has unresolved variables, clear choices
+                            question.choices = [];
+                        }
+                        
+                        // Clear current value since choices changed
+                        question.clearValue();
+                    }
+                }
+            });
+        }
+
+        /**
+         * Transform data from zone engine to SurveyJS choices format
+         * Handles optional valueName, titleName, and path properties
+         */
+        function transformDataToChoices(data, valueName, titleName, path) {
+            // Apply path if specified (for nested JSON)
+            let processedData = data;
+            if (path && Array.isArray(data) && data.length > 0) {
+                // Path is used to extract nested data from response
+                const pathParts = path.split('.');
+                processedData = pathParts.reduce((obj, key) => obj?.[key], data[0]) || data;
+            }
+
+            // Ensure we have an array
+            if (!Array.isArray(processedData)) {
+                processedData = [processedData];
+            }
+
+            // If no valueName/titleName specified, try to auto-detect or use whole object
+            if (!valueName && !titleName) {
+                // If data is array of primitives (strings/numbers)
+                if (processedData.length > 0 && typeof processedData[0] !== 'object') {
+                    return processedData.map(item => ({
+                        value: item,
+                        text: String(item)
+                    }));
+                }
+                
+                // If data is array of objects, use first property as value
+                if (processedData.length > 0 && typeof processedData[0] === 'object') {
+                    const firstKey = Object.keys(processedData[0])[0];
+                    return processedData.map(item => ({
+                        value: item[firstKey],
+                        text: String(item[firstKey])
+                    }));
+                }
+                
+                return [];
+            }
+
+            // Use specified valueName and titleName
+            const vName = valueName || (titleName || Object.keys(processedData[0] || {})[0]);
+            const tName = titleName || valueName || Object.keys(processedData[0] || {})[0];
+
+            return processedData.map(item => ({
+                value: item[vName],
+                text: item[tName] != null ? String(item[tName]) : String(item[vName] || '')
+            })).filter(choice => choice.value != null);
+        }
 
         async function saveSurveyData(survey) {
             try {
