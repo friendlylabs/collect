@@ -7,6 +7,7 @@
     <title>Surveyr Collect</title>
 
     <link href="/js/libs/toast/toast.min.css" rel="stylesheet">
+    <link href="/css/tailwind.css" id="tailwindCss" rel="stylesheet">
     <link href="/css/app.css" id="appCss" rel="stylesheet">
     <link href="/fonts/fontawesome/all.css" id="fontawesomeCss" rel="stylesheet">
 
@@ -23,11 +24,25 @@
 
     <style>
         body{margin: 0; padding: 0; font-family: Arial, sans-serif;}
+        .sd-title.sd-container-modern__title {
+            display: none !important;
+        }
     </style>
 </head>
 <body>
+    <div class="content">
+        <header class="py-4 px-3 flex items-center gap-3">
+            <a href="/pages/forms/index.html" class="text-xl">
+                <i class="fas fa-arrow-left"></i>
+            </a>
+            <h3 class="text-base font-bold truncate" id="formTitle">Forms</h3>
+        </header>
     
-    <div id="surveyContainer" style="height: 100vh;"></div>
+        <main class="p-2 overflow-y-auto" style="height: calc(100vh - 60px); max-height: calc(100vh - 60px);">
+            <div id="surveyContainer" style="height: 100%;"></div>
+        </main>
+
+    </div>
 
     <script src="/vendor/jquery/jquery.min.js" id="jqueryJs"></script>
     <script src="/vendor/utils/sweetalert.min.js" id="swalJs"></script>
@@ -43,6 +58,11 @@
             try {
                 var form = await getFormById(formId);
                 var formContent = form.content;
+
+                formContent.showProgressBar = true;
+
+                // update form title in header
+                document.getElementById('formTitle').textContent = form.title || 'Form Filling';
 
                 var formTheme = 'Flat';
                 var survey = new Survey.Model(formContent);
