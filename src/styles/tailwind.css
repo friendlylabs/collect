@@ -12,10 +12,11 @@ header{
 main{
     max-height: calc(100vh - 120px);
     height: calc(100vh - 120px);
-    max-width: 570px;
+    max-width: 1080px;
     width: 100%;
     margin: 0 auto;
     overflow-y: hidden;
+    position: relative;
 }
 
 footer{
