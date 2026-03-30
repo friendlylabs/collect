@@ -44,17 +44,24 @@
         // get parameter id from url
         const urlParams = new URLSearchParams(window.location.search);
         const formId = urlParams.get('id');
+        const appTheme = localStorage.getItem('theme') || 'light';
 
         const surveyContainer = document.getElementById('surveyContainer');
         document.addEventListener('DOMContentLoaded', async function () {
             try {
                 var form = await getFormById(formId);
                 var formContent = form.content;
-                var formTheme = form.theme ? form.theme : 'Default';
+
+                var formTheme = 'Flat';
                 var survey = new Survey.Model(formContent);
 
                 survey.render(surveyContainer);
-                survey.applyTheme(SurveyTheme[formTheme + 'LightPanelless']);
+                
+                if(appTheme === 'dim') {
+                    survey.applyTheme(SurveyTheme[formTheme + 'DarkPanelless']);
+                } else {
+                    survey.applyTheme(SurveyTheme[formTheme + 'LightPanelless']);
+                }
                 survey.onComplete.add(saveSurveyData);
             } catch (e) {
                 toast.error({ message: 'An error occurred while loading the form' });
