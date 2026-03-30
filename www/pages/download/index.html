@@ -14,6 +14,7 @@
         <script src="/js/libs/toast/toast.min.js" id="toastJs"></script>
         <script src="/vendor/dexie/dexie.min.js" id="dexieJs"></script>
         <script src="/js/database.js" id="databaseJs"></script>
+        <script src="/js/zone-engine.js" id="zoneEngineJs"></script>
         <script src="/js/components.js"></script>
     </head>
     <body>
@@ -220,6 +221,9 @@
                                 });
 
                                 addForms(checkedForms);
+                                
+                                // Extract and download zones from forms
+                                downloadZonesFromForms(checkedForms);
                             }else{
                                 toast.error({message: 'An error occurred while downloading forms.'});
                             }
@@ -237,6 +241,76 @@
                             '<i class="fa-regular fa-download text-xl"></i> Update Forms';
                     }
                 });
+            }
+
+            async function downloadZonesFromForms(forms) {
+                if(!checkConnectivity()){
+                    console.log('No internet connection. Cannot download zones.');
+                    return;
+                }
+
+                try {
+                    const allZoneCodes = new Set();
+                    
+                    // Extract all unique zone codes from all forms
+                    forms.forEach(form => {
+                        const codes = zoneEngine.extractZoneCodes(form.content);
+                        codes.forEach(code => allZoneCodes.add(code));
+                    });
+
+                    if (allZoneCodes.size === 0) {
+                        console.log('No zones found in forms');
+                        return;
+                    }
+
+                    console.log(`Found ${allZoneCodes.size} zones to download`);
+                    const token = localStorage.getItem('token');
+                    const projectUrl = localStorage.getItem('projectUrl');
+                    const zonesToSave = [];
+
+                    // Fetch each complete zone by code
+                    for (const code of allZoneCodes) {
+                        try {
+                            // Build base zone URL
+                            const baseUrl = projectUrl + 'zones/show/' + code;
+                            
+                            // First get the summary
+                            const summaryResponse = await $.ajax({
+                                url: baseUrl + '?format=summary',
+                                method: 'GET',
+                                headers: { 'Authorization': 'Bearer ' + token }
+                            });
+
+                            // Then fetch the complete zone data (no filters)
+                            const dataResponse = await $.ajax({
+                                url: baseUrl + '?format=default',
+                                method: 'GET',
+                                headers: { 'Authorization': 'Bearer ' + token }
+                            });
+
+                            if (dataResponse) {
+                                zonesToSave.push({
+                                    code: code,
+                                    name: summaryResponse.name || 'Zone ' + code,
+                                    content: dataResponse
+                                });
+                            }
+                        } catch (error) {
+                            console.error('Error downloading zone:', code, error);
+                        }
+                    }
+
+                    // Save all zones to database
+                    if (zonesToSave.length > 0) {
+                        const saved = await addZones(zonesToSave);
+                        if (saved) {
+                            console.log(`Successfully saved ${zonesToSave.length} zones`);
+                        }
+                    }
+
+                } catch (error) {
+                    console.error('Error downloading zones:', error);
+                }
             }
 
         </script>
