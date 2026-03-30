@@ -34,6 +34,16 @@ class Database {
         this.db.submissions.hook("creating", (primKey, obj) => {
             obj.created_at = obj.created_at || new Date().toISOString();
         });
+
+        this.db.zones.hook("creating", (primKey, obj) => {
+            obj.created_at = obj.created_at || new Date().toISOString();
+            obj.updated_at = obj.updated_at || new Date().toISOString();
+        });
+
+        this.db.zones.hook("updating", (modifications, primKey, obj) => {
+            modifications.updated_at = new Date().toISOString();
+            return modifications;
+        });
     }
 }
 
@@ -48,7 +58,8 @@ class Database {
 let databaseName = localStorage.getItem('project') ?? null;
 const dbInstance = new Database(databaseName, {
     forms: "id, title, content, theme, created_at, updated_at",
-    submissions: "++id, form_id, content, created_at"
+    submissions: "++id, form_id, content, created_at",
+    zones: "code, name, content, created_at, updated_at"
 }).getDB();
 
 
@@ -195,5 +206,83 @@ async function countSubmissionsByFormId(formId) {
     } catch (error) {
         console.error("Error counting submissions:", error);
         return 0;
+    }
+}
+
+/**
+ * Add zones to the database
+ * 
+ * @param {Array} zones
+ * @returns {boolean}
+ */
+async function addZones(zones) {
+    try {
+        await dbInstance.zones.bulkPut(zones);
+        return true;
+    } catch (error) {
+        console.error("Error adding zones:", error);
+        return false;
+    }
+}
+
+/**
+ * Get all zones from the database
+ * 
+ * @returns {Array}
+ */
+async function getZones() {
+    try {
+        const zones = await dbInstance.zones.toArray();
+        return zones;
+    } catch (error) {
+        console.error("Error fetching zones:", error);
+        return [];
+    }
+}
+
+/**
+ * Get zone by code from the database
+ * 
+ * @param {string} code
+ * @returns {Object|null}
+ */
+async function getZoneByCode(code) {
+    try {
+        const zone = await dbInstance.zones.where("code").equals(code).first();
+        return zone;
+    } catch (error) {
+        console.error("Error fetching zone:", error);
+        return null;
+    }
+}
+
+/**
+ * Delete a zone from the database
+ * 
+ * @param {string} code
+ * @returns {boolean}
+ */
+async function deleteZone(code) {
+    try {
+        await dbInstance.zones.where("code").equals(code).delete();
+        return true;
+    } catch (error) {
+        console.error("Error deleting zone:", error);
+        return false;
+    }
+}
+
+/**
+ * Clear all zones from the database
+ * 
+ * @returns {boolean}
+ */
+async function clearZones() {
+    try {
+        await dbInstance.zones.clear();
+        return true;
+    } catch (error) {
+        console.error("Error clearing zones:", error);
+        return false;
     }
 }
