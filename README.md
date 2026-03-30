@@ -14,17 +14,18 @@ This app enables you to collect responses to your forms offline. All responses a
   <img src="https://surveyr.saasify.io/assets/pwa/demo.gif" alt="Surveyr Demo" />
 </p>
 
----
-
 ### 🚀 Quick Start
+
 1. Install the latest version of **Node.js** and **npm**, in this project we are using Node.js v22.13.1 and npm v10.9.2 respectively.
 2. Install the Cordova CLI by running `npm install -g cordova`.
 3. Clone the repository and navigate to the project directory.
 4. Run the command `cordova prepare`, this will install all the necessary dependencies and plugins required for the project.
 
-
 ### ⚠️ Note
+
 This is an alpha version serving as a proof of concept, not a fully-featured application. Built using **Cordova**.
 
 ### 🚧 Current Limitations
-- The app currently supports only non-live forms. It cannot cache dynamic data fetched from the server in real time.
+
+- Offline URL Source (beta): The app can load forms choices from a specified URL `question.choicesByUrl`, but this feature is still in beta and may not work reliably in all cases.
+- Offline geolocation: The app does not currently support geolocation features when offline.
