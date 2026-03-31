@@ -1,0 +1,276 @@
+<?php
+/**
+ * Cordova Browser Monitor
+ * Monitors www directory for changes and syncs to platforms/browser/www
+ */
+
+class CordovaBrowserMonitor {
+    private $sourceDir;
+    private $targetDirs = [];
+    private $fileHashes = [];
+    private $excludePatterns = [
+        '/\.git/',
+        '/node_modules/',
+        '/\.DS_Store/',
+        '/Thumbs\.db/',
+        '/\.tmp/',
+        '/\.temp/'
+    ];
+
+    public function __construct() {
+        $this->sourceDir = __DIR__ . '/www';
+        $this->targetDirs = [
+            __DIR__ . '/platforms/browser/www',
+            __DIR__ . '/platforms/android/app/src/main/assets/www'
+        ];
+        
+        // Ensure source directory exists
+        if (!is_dir($this->sourceDir)) {
+            die("Source directory does not exist: {$this->sourceDir}\n");
+        }
+        
+        // Check target directories and warn if missing
+        foreach ($this->targetDirs as $targetDir) {
+            if (!is_dir($targetDir)) {
+                $this->log("Warning: Target directory does not exist: {$targetDir}");
+            }
+        }
+
+        $this->log("Monitor initialized");
+        $this->log("Source: {$this->sourceDir}");
+        foreach ($this->targetDirs as $targetDir) {
+            $this->log("Target: {$targetDir}");
+        }
+    }
+
+    /**
+     * Start monitoring for file changes
+     */
+    public function start() {
+        $this->log("Starting Cordova Browser Monitor...");
+        $this->log("Press Ctrl+C to stop monitoring");
+        
+        // Initial sync
+        $this->syncAll();
+        $this->buildFileHashMap();
+        
+        while (true) {
+            $this->checkForChanges();
+            usleep(500000); // Check every 0.5 seconds
+        }
+    }
+
+    /**
+     * Perform initial full sync
+     */
+    private function syncAll() {
+        $this->log("Performing initial sync...");
+        foreach ($this->targetDirs as $targetDir) {
+            if (is_dir($targetDir)) {
+                $this->copyDirectory($this->sourceDir, $targetDir, true);
+            }
+        }
+        $this->log("Initial sync completed");
+    }
+
+    /**
+     * Build hash map of all files
+     */
+    private function buildFileHashMap() {
+        $this->fileHashes = [];
+        $this->scanDirectory($this->sourceDir, function($file) {
+            $relativePath = $this->getRelativePath($file, $this->sourceDir);
+            if (!$this->shouldExclude($relativePath)) {
+                $this->fileHashes[$relativePath] = md5_file($file);
+            }
+        });
+        $this->log("Built hash map for " . count($this->fileHashes) . " files");
+    }
+
+    /**
+     * Check for file changes
+     */
+    private function checkForChanges() {
+        $currentHashes = [];
+        $changes = [];
+
+        // Scan for current files and detect changes
+        $this->scanDirectory($this->sourceDir, function($file) use (&$currentHashes, &$changes) {
+            $relativePath = $this->getRelativePath($file, $this->sourceDir);
+            
+            if ($this->shouldExclude($relativePath)) {
+                return;
+            }
+
+            $currentHash = md5_file($file);
+            $currentHashes[$relativePath] = $currentHash;
+
+            // Check if file is new or modified
+            if (!isset($this->fileHashes[$relativePath])) {
+                $changes[] = ['type' => 'added', 'file' => $relativePath];
+            } elseif ($this->fileHashes[$relativePath] !== $currentHash) {
+                $changes[] = ['type' => 'modified', 'file' => $relativePath];
+            }
+        });
+
+        // Check for deleted files
+        foreach ($this->fileHashes as $relativePath => $hash) {
+            if (!isset($currentHashes[$relativePath])) {
+                $changes[] = ['type' => 'deleted', 'file' => $relativePath];
+            }
+        }
+
+        // Process changes
+        if (!empty($changes)) {
+            $this->processChanges($changes);
+            $this->fileHashes = $currentHashes;
+        }
+    }
+
+    /**
+     * Process detected changes
+     */
+    private function processChanges($changes) {
+        foreach ($changes as $change) {
+            $relativePath = $change['file'];
+            $sourcePath = $this->sourceDir . '/' . $relativePath;
+
+            switch ($change['type']) {
+                case 'added':
+                case 'modified':
+                    foreach ($this->targetDirs as $targetDir) {
+                        if (is_dir($targetDir)) {
+                            $targetPath = $targetDir . '/' . $relativePath;
+                            $this->copyFile($sourcePath, $targetPath);
+                        }
+                    }
+                    $this->log("🔄 {$change['type']}: {$relativePath}");
+                    break;
+                
+                case 'deleted':
+                    foreach ($this->targetDirs as $targetDir) {
+                        $targetPath = $targetDir . '/' . $relativePath;
+                        if (file_exists($targetPath)) {
+                            unlink($targetPath);
+                        }
+                    }
+                    $this->log("🗑️  deleted: {$relativePath}");
+                    break;
+            }
+        }
+    }
+
+    /**
+     * Copy a single file
+     */
+    private function copyFile($source, $target) {
+        $targetDir = dirname($target);
+        if (!is_dir($targetDir)) {
+            mkdir($targetDir, 0755, true);
+        }
+        
+        copy($source, $target);
+    }
+
+    /**
+     * Recursively copy directory
+     */
+    private function copyDirectory($source, $target, $overwrite = false) {
+        if (!is_dir($target)) {
+            mkdir($target, 0755, true);
+        }
+
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($source, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST
+        );
+
+        foreach ($iterator as $item) {
+            $relativePath = $this->getRelativePath($item->getPathname(), $source);
+            
+            if ($this->shouldExclude($relativePath)) {
+                continue;
+            }
+
+            $targetPath = $target . DIRECTORY_SEPARATOR . $relativePath;
+
+            if ($item->isDir()) {
+                if (!is_dir($targetPath)) {
+                    mkdir($targetPath, 0755, true);
+                }
+            } else {
+                if ($overwrite || !file_exists($targetPath)) {
+                    $this->copyFile($item->getPathname(), $targetPath);
+                }
+            }
+        }
+    }
+
+    /**
+     * Scan directory with callback
+     */
+    private function scanDirectory($dir, $callback) {
+        if (!is_dir($dir)) return;
+
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST
+        );
+
+        foreach ($iterator as $item) {
+            if ($item->isFile()) {
+                $callback($item->getPathname());
+            }
+        }
+    }
+
+    /**
+     * Get relative path
+     */
+    private function getRelativePath($file, $base) {
+        $file = str_replace('\\', '/', realpath($file));
+        $base = str_replace('\\', '/', realpath($base));
+        return ltrim(substr($file, strlen($base)), '/');
+    }
+
+    /**
+     * Check if file should be excluded
+     */
+    private function shouldExclude($path) {
+        foreach ($this->excludePatterns as $pattern) {
+            if (preg_match($pattern, $path)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Log message with timestamp
+     */
+    private function log($message) {
+        $timestamp = date('Y-m-d H:i:s');
+        echo "[{$timestamp}] {$message}\n";
+    }
+}
+
+// Handle command line arguments
+if (php_sapi_name() !== 'cli') {
+    die("This script must be run from command line.\n");
+}
+
+// Handle Ctrl+C gracefully
+if (function_exists('pcntl_signal')) {
+    pcntl_signal(SIGINT, function() {
+        echo "\n\n🛑 Monitor stopped by user\n";
+        exit(0);
+    });
+}
+
+try {
+    $monitor = new CordovaBrowserMonitor();
+    $monitor->start();
+} catch (Exception $e) {
+    echo "Error: " . $e->getMessage() . "\n";
+    exit(1);
+}
